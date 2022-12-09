@@ -14,7 +14,6 @@ import {
 	Coordinates,
 } from "./types/types";
 const fetch = require("node-fetch");
-
 const parser = new xml2js.Parser();
 dotenv.config();
 
@@ -23,12 +22,57 @@ const port = process.env.PORT || 3000;
 app.use(cors({ origin: ["http://127.0.0.1:5173", "http://localhost:5173"] }));
 //app.use(cors());
 
+/* 
+Keep the drone information in this variable. 
+We change it with interval in getDrones() function.
+And we send it to the client witch socket.
+(or as a response to requests to /drones endpoint)  
+*/
+let drones: Drone[] = [];
+
+// Proxy server for CORS. This allows us to fetch data from the Reaktor API without having to deal with CORS.
 const proxy = require("cors-anywhere").createServer({
 	originWhitelist: [], // Allow all origins
 	requireHeaders: [], // Do not require any headers.
 	removeHeaders: [], // Do not remove any headers.
 });
-let drones: Drone[] = [];
+
+// Attach our cors proxy to the existing API on the /proxy endpoint. This is needed because the API doesn't have CORS headers.
+app.get("/proxy/:proxyUrl*", (req, res) => {
+	req.url = req.url.replace("/proxy/", "/"); // Strip '/proxy' from the front of the URL, else the proxy won't work.
+	proxy.emit("request", req, res);
+});
+
+app.get("/drones", function (req, res) {
+	res.send(drones);
+});
+
+app.get("/test", function (req, res) {
+	res.send({ message: "Hello World!" });
+});
+
+app.use(express.static(path.resolve(__dirname, "build")));
+
+app.get("/", function (req, res) {
+	res.sendFile(path.join(__dirname, "build", "index.html"));
+});
+
+const httpServer = createServer(app);
+const io = new Server<
+	ClientToServerEvents,
+	ServerToClientEvents,
+	InterServerEvents,
+	SocketData
+>(httpServer, {
+	cors: {
+		origin: [
+			"http://127.0.0.1:5173",
+			"http://localhost:5173",
+			"ws://localhost:5173",
+		],
+	},
+});
+
 const distanceFromCenter = (coordinates: Coordinates) => {
 	const center: Coordinates = { x: 250000, y: 250000 };
 	const distance = Math.sqrt(
@@ -88,55 +132,55 @@ const getDrones = async (oldDroneList: Drone[]) => {
 			}
 		);
 
-		let newDroneList: Drone[] = [...oldDroneList];
-		console.log(
-			"🚀 ~ file: index.ts:94 ~ getDrones ~ newDroneList",
-			newDroneList
+		// Array of drones that are within 100m from the center and are not in the old list
+		const newViolations = newDrones.filter(
+			(drone) =>
+				drone.distance <= 100 &&
+				!oldDroneList.find(
+					(oldDrone) => oldDrone.serialNumber === drone.serialNumber
+				)
 		);
 
-		// newDrones.forEach(async (newDrone) =>
-		// Go over the new list of drones
-		for await (const newDrone of newDrones) {
-			// Check if drone is already in the list
-			const existingDrone = oldDroneList.find(
-				(oldDrone) => oldDrone.serialNumber === newDrone.serialNumber
-			);
-			// If drone is not on the list and it's within 100m from the center add it to the list
-			if (!existingDrone && newDrone.distance <= 100) {
+		// Get the owner information for each new drone
+		const newViolationsWithOwners = await Promise.all(
+			newViolations.map(async (drone) => {
 				const owner = await fetch(
-					`http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/pilots/${newDrone.serialNumber}`
+					`http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/pilots/${drone.serialNumber}`
 				);
 				const ownerJson = await owner.json();
-				const newDroneWithOwner = { ...newDrone, owner: ownerJson };
-				newDroneList.push(newDroneWithOwner);
-			}
-			// If drone is in the list update the timestamp and distance
-			else if (existingDrone) {
-				const updatedDrone = {
-					...existingDrone,
+				return {
+					...drone,
+					owner: ownerJson,
+				};
+			})
+		);
+
+		// Array of drones that were in the old list, but updated with new information. You could use flatMap here if you wanted to filter the older than 10 min ones at the same time.
+		const updatedOldDroneList = oldDroneList.map((oldDrone) => {
+			const newDrone = newDrones.find(
+				(newDrone) => newDrone.serialNumber === oldDrone.serialNumber
+			);
+			if (newDrone) {
+				return {
+					...oldDrone,
 					timestamp: newDrone.timestamp, // Update timestamp
 					NDZtimestamp:
-						newDrone.NDZtimestamp || existingDrone.NDZtimestamp, // Update NDZtimestamp if drone is within 100m from the center
-					distance: Math.min(
-						newDrone.distance,
-						existingDrone.distance
-					), // Keep the smallest distance
+						newDrone.NDZtimestamp || oldDrone.NDZtimestamp, // Update NDZtimestamp if drone is within 100m from the center
+					distance: Math.min(newDrone.distance, oldDrone.distance), // Keep the smallest distanc
 				};
-
-				// Replace the drone in the list with the updated drone
-				const indexOfDrone = newDroneList.findIndex(
-					(drone) => drone.serialNumber === updatedDrone.serialNumber
-				);
-				newDroneList.splice(indexOfDrone, 1, updatedDrone);
+			} else {
+				return oldDrone;
 			}
-		}
-
-		// Finally filter drones that are older than 10 minutes
-		const finalDroneList = newDroneList.filter((drone) => {
-			return !isOlderThan10Minutes(drone.timestamp);
 		});
+
+		// Put the arrays together and filter out drones that are older than 10 minutes
+		const finalDroneList = [
+			...updatedOldDroneList,
+			...newViolationsWithOwners,
+		].filter((drone) => !isOlderThan10Minutes(drone.timestamp));
+
 		console.log(
-			"🚀 ~ file: index.ts:134 ~ finalDroneList ~ finalDroneList",
+			"🚀 ~ file: index.ts:141 ~ finalDroneList ~ finalDroneList",
 			finalDroneList
 		);
 		return finalDroneList;
@@ -145,48 +189,11 @@ const getDrones = async (oldDroneList: Drone[]) => {
 	}
 };
 
-/* Attach our cors proxy to the existing API on the /proxy endpoint. */
-app.get("/proxy/:proxyUrl*", (req, res) => {
-	req.url = req.url.replace("/proxy/", "/"); // Strip '/proxy' from the front of the URL, else the proxy won't work.
-	proxy.emit("request", req, res);
-});
-
-app.get("/drones", function (req, res) {
-	res.send(drones);
-});
-
-app.get("/test", function (req, res) {
-	res.send({ message: "Hello World!" });
-});
-
-app.use(express.static(path.resolve(__dirname, "build")));
-
-app.get("/", function (req, res) {
-	res.sendFile(path.join(__dirname, "build", "index.html"));
-});
-
-const httpServer = createServer(app);
-const io = new Server<
-	ClientToServerEvents,
-	ServerToClientEvents,
-	InterServerEvents,
-	SocketData
->(httpServer, {
-	cors: {
-		origin: [
-			"http://127.0.0.1:5173",
-			"http://localhost:5173",
-			"ws://localhost:5173",
-		],
-	},
-});
-
-// This interval will update the drone list every x seconds and it will keep the list updated so that wwe can send it to the client anytime
+// This interval will update the drone list every x seconds and it will keep the list updated so that we can send it to the client anytime
 const interval = setInterval(async () => {
-	const droneList = await getDrones(drones);
-	if (droneList) drones = droneList;
-	// TODO change to 2 seconds
-}, 1000 * 10);
+	const droneList = await getDrones(drones); // Get the drones (send the old drones as a parameter)
+	if (droneList) drones = droneList; // If we get a new drone list, update the old one
+}, 1000 * 10); // TODO change to 2 seconds
 
 io.on("connection", (socket) => {
 	console.log(`Client ${String(socket.id)} connected`);
@@ -194,11 +201,9 @@ io.on("connection", (socket) => {
 
 	const socketInterval = setInterval(() => {
 		socket.emit("getData", drones);
-		// TODO change to 2 seconds
-	}, 1000 * 10);
+	}, 1000 * 10); // TODO change to 2 seconds
 
 	socket.on("getData", () => {
-		console.log("getting data");
 		socket.emit("getData", drones);
 	});
 
