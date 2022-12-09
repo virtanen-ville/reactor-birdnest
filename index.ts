@@ -20,8 +20,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
-app.use(cors({ origin: "http://127.0.0.1:5173" }));
-//app.use(cors({ origin: "http://localhost:5173" }));
+app.use(cors({ origin: ["http://127.0.0.1:5173", "http://localhost:5173"] }));
 //app.use(cors());
 
 const proxy = require("cors-anywhere").createServer({
@@ -156,6 +155,10 @@ app.get("/drones", function (req, res) {
 	res.send(drones);
 });
 
+app.get("/test", function (req, res) {
+	res.send({ message: "Hello World!" });
+});
+
 app.use(express.static(path.resolve(__dirname, "build")));
 
 app.get("/", function (req, res) {
@@ -170,7 +173,11 @@ const io = new Server<
 	SocketData
 >(httpServer, {
 	cors: {
-		origin: "http://127.0.0.1:5173",
+		origin: [
+			"http://127.0.0.1:5173",
+			"http://localhost:5173",
+			"ws://localhost:5173",
+		],
 	},
 });
 

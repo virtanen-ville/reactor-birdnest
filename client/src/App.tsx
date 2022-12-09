@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import "./App.css";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -8,7 +7,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
 import { io } from "socket.io-client";
-import { CircularProgress, Container, Typography } from "@mui/material";
+import { Box, CircularProgress, Container, Typography } from "@mui/material";
 export interface Drone {
 	serialNumber: string;
 	timestamp: string;
@@ -30,13 +29,23 @@ export interface Owner {
 	email: string;
 }
 
-const socket = io("http://127.0.0.1:3000");
+//const socket = io("http://127.0.0.1:3000");
+//const socket = io("http:localhost:3000");
+//const socket = io("/socket.io");
+const socket = io();
 
 function App() {
 	const [drones, setDrones] = useState<Drone[]>([]);
 	const [loading, setLoading] = useState(true);
 	useEffect(() => {
 		socket.emit("getData");
+		(async () => {
+			const res = await fetch("/api/test", {
+				method: "GET",
+			});
+			const data = await res.json();
+			console.log("🚀 ~ file: App.tsx:45 ~ data", data);
+		})();
 	}, []);
 
 	// useEffect(() => {
@@ -69,13 +78,24 @@ function App() {
 	}, [socket]);
 
 	return (
-		<Container maxWidth="lg">
+		<Container
+			maxWidth="lg"
+			sx={{
+				display: "flex",
+				flexDirection: "column",
+				justifyContent: "center",
+				alignItems: "center",
+			}}
+		>
 			<Typography variant="h2">Birdnest</Typography>
-
-			<Paper sx={{ width: "100%", overflow: "hidden" }}>
-				{loading ? (
-					<CircularProgress />
-				) : (
+			{loading ? (
+				<CircularProgress
+					sx={{
+						display: "block",
+					}}
+				/>
+			) : (
+				<Paper sx={{ width: "100%", overflow: "hidden" }}>
 					<TableContainer sx={{ maxHeight: "80vh" }}>
 						<Table
 							stickyHeader
@@ -132,8 +152,8 @@ function App() {
 							</TableBody>
 						</Table>
 					</TableContainer>
-				)}
-			</Paper>
+				</Paper>
+			)}
 		</Container>
 	);
 }
