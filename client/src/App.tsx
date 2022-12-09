@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import "./App.css";
-import xml2js from "xml2js";
 import Table from "@mui/material/Table";
 import TableBody from "@mui/material/TableBody";
 import TableCell from "@mui/material/TableCell";
@@ -9,7 +8,6 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
 import { io } from "socket.io-client";
-const parser = new xml2js.Parser();
 export interface Drone {
 	serialNumber: string;
 	timestamp: string;
@@ -30,16 +28,14 @@ export interface Owner {
 	createdDt: string;
 	email: string;
 }
+
+const socket = io("http://127.0.0.1:3000");
+
 function App() {
 	const [drones, setDrones] = useState<Drone[]>([]);
-	const [socket, setSocket] = useState(io());
+	const [loading, setLoading] = useState(true);
 	useEffect(() => {
-		const newSocket = io("http://127.0.0.1:3000");
-
-		setSocket(newSocket);
-		return () => {
-			newSocket.close();
-		};
+		socket.emit("getData");
 	}, []);
 
 	// useEffect(() => {
@@ -61,7 +57,10 @@ function App() {
 			console.log("Connecting to socket from client");
 		});
 		socket.on("getData", (data: Drone[]) => {
-			setDrones(data);
+			if (data.length > 0) {
+				setLoading(false);
+				setDrones(data);
+			}
 		});
 		return () => {
 			socket.off("getData");
@@ -71,26 +70,30 @@ function App() {
 	return (
 		<div className="App">
 			<h1>Birdnest</h1>
-			<TableContainer component={Paper}>
-				<Table sx={{ minWidth: 650 }} aria-label="drone-info-table">
-					<TableHead>
-						<TableRow>
-							<TableCell>Latest observation</TableCell>
-							<TableCell align="right">Latest in NDZ</TableCell>
+			{loading ? (
+				<h2>Loading...</h2>
+			) : (
+				<TableContainer component={Paper}>
+					<Table sx={{ minWidth: 650 }} aria-label="drone-info-table">
+						<TableHead>
+							<TableRow>
+								<TableCell>Latest observation</TableCell>
+								<TableCell align="right">
+									Latest in NDZ
+								</TableCell>
 
-							<TableCell align="right">Drone S/N</TableCell>
-							<TableCell align="right">
-								Closest Distance
-							</TableCell>
+								<TableCell align="right">Drone S/N</TableCell>
+								<TableCell align="right">
+									Closest Distance
+								</TableCell>
 
-							<TableCell align="right">Name</TableCell>
-							<TableCell align="right">Phone</TableCell>
-							<TableCell align="right">Email</TableCell>
-						</TableRow>
-					</TableHead>
-					<TableBody>
-						{drones &&
-							drones.map((drone, idx) => (
+								<TableCell align="right">Name</TableCell>
+								<TableCell align="right">Phone</TableCell>
+								<TableCell align="right">Email</TableCell>
+							</TableRow>
+						</TableHead>
+						<TableBody>
+							{drones.map((drone, idx) => (
 								<TableRow key={idx}>
 									<TableCell component="th" scope="row">
 										{new Date(
@@ -119,9 +122,10 @@ function App() {
 									</TableCell>
 								</TableRow>
 							))}
-					</TableBody>
-				</Table>
-			</TableContainer>
+						</TableBody>
+					</Table>
+				</TableContainer>
+			)}
 		</div>
 	);
 }
