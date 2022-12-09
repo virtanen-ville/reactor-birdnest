@@ -40,7 +40,7 @@ function App() {
 	useEffect(() => {
 		socket.emit("getData");
 		(async () => {
-			const res = await fetch("/api/test", {
+			const res = await fetch("/test", {
 				method: "GET",
 			});
 			const data = await res.json();
