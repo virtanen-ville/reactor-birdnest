@@ -51,10 +51,10 @@ app.get("/test", function (req, res) {
 	res.send({ message: "Hello World!" });
 });
 
-app.use(express.static(path.resolve(__dirname, "build")));
+app.use(express.static(path.resolve(__dirname, "client/dist")));
 
 app.get("/", function (req, res) {
-	res.sendFile(path.join(__dirname, "build", "index.html"));
+	res.sendFile(path.join(__dirname, "client/dist", "index.html"));
 });
 
 const httpServer = createServer(app);
