@@ -91,7 +91,7 @@ const isOlderThan10Minutes = (timestamp: string) => {
 const getDrones = async (oldDroneList: Drone[]) => {
 	try {
 		const res = await fetch(
-			"/proxy/http://assignments.reaktor.com/birdnest/drones",
+			`${process.env.HOST}/proxy/http://assignments.reaktor.com/birdnest/drones`,
 			// "http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/drones",
 			{
 				method: "GET",
@@ -146,7 +146,7 @@ const getDrones = async (oldDroneList: Drone[]) => {
 		const newViolationsWithOwners = await Promise.all(
 			newViolations.map(async (drone) => {
 				const owner = await fetch(
-					`/proxy/http://assignments.reaktor.com/birdnest/pilots/${drone.serialNumber}`
+					`${process.env.HOST}/proxy/http://assignments.reaktor.com/birdnest/pilots/${drone.serialNumber}`
 					// `http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/pilots/${drone.serialNumber}`
 				);
 				const ownerJson = await owner.json();
