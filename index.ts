@@ -195,15 +195,15 @@ const getDrones = async (oldDroneList: Drone[]) => {
 const interval = setInterval(async () => {
 	const droneList = await getDrones(drones); // Get the drones (send the old drones as a parameter)
 	if (droneList) drones = droneList; // If we get a new drone list, update the old one
-}, 1000 * 10); // TODO change to 2 seconds
+}, 1000 * parseInt(process.env.REFRESH_RATE || "10")); // Set the refresh rate from the .env file or default to 10 seconds
 
 io.on("connection", (socket) => {
 	console.log(`Client ${String(socket.id)} connected`);
-	socket.emit("getData", drones);
+	socket.emit("getData", drones); // Send the drone list to the client right away
 
 	const socketInterval = setInterval(() => {
 		socket.emit("getData", drones);
-	}, 1000 * 10); // TODO change to 2 seconds
+	}, 1000 * parseInt(process.env.REFRESH_RATE || "10"));
 
 	socket.on("getData", () => {
 		socket.emit("getData", drones);
