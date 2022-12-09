@@ -7,7 +7,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
 import { io } from "socket.io-client";
-import { Box, CircularProgress, Container, Typography } from "@mui/material";
+import { CircularProgress, Container, Typography } from "@mui/material";
 export interface Drone {
 	serialNumber: string;
 	timestamp: string;
@@ -29,31 +29,23 @@ export interface Owner {
 	email: string;
 }
 
-//const socket = io("http://127.0.0.1:3000");
-//const socket = io("http:localhost:3000");
-//const socket = io("/socket.io");
+// Set the Socket.IO connection
 const socket = io();
 
 function App() {
 	const [drones, setDrones] = useState<Drone[]>([]);
 	const [loading, setLoading] = useState(true);
-	useEffect(() => {
-		socket.emit("getData");
-		(async () => {
-			const res = await fetch("/test", {
-				method: "GET",
-			});
-			const data = await res.json();
-			console.log("🚀 ~ file: App.tsx:45 ~ data", data);
-		})();
-	}, []);
+
+	/* Another way to get data from the server using setInterval and fetch. We use socket.io instead here.
+	 */
 
 	// useEffect(() => {
 	// 	let interval = setInterval(async () => {
-	// 		const res = await fetch("http://127.0.0.1:3000/drones", {
+	// 		const res = await fetch("/drones", {
 	// 			method: "GET",
 	// 		});
 	// 		const data = await res.json();
+	// 		setLoading(false);
 	// 		setDrones(data);
 	// 	}, 1000 * 2); // the second number in seconds
 	// 	return () => {
@@ -61,6 +53,7 @@ function App() {
 	// 	};
 	// }, []);
 
+	// Socket.io connection. We define the event listeners here.
 	useEffect(() => {
 		if (!socket) return;
 		socket.on("connect", () => {
@@ -117,6 +110,7 @@ function App() {
 								</TableRow>
 							</TableHead>
 							<TableBody>
+								{/* Only show the data if drones is defined. This is to prevent errors with map. */}
 								{drones &&
 									drones.map((drone, idx) => (
 										<TableRow key={idx}>

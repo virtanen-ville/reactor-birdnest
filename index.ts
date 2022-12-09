@@ -20,7 +20,6 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 app.use(cors({ origin: ["http://127.0.0.1:5173", "http://localhost:5173"] }));
-//app.use(cors());
 
 /* 
 Keep the drone information in this variable. 
@@ -90,14 +89,15 @@ const isOlderThan10Minutes = (timestamp: string) => {
 };
 const getDrones = async (oldDroneList: Drone[]) => {
 	try {
+		// Fetch the drone data from the Reaktor API with CORS-anywhere proxy
 		const res = await fetch(
 			`${process.env.HOST}/proxy/http://assignments.reaktor.com/birdnest/drones`,
-			// "http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/drones",
 			{
 				method: "GET",
 			}
 		);
-		// res is XML. Parse it.
+
+		// res is XML. Parse it with XML2JS.
 		const xml = await res.text();
 		const result = await parser.parseStringPromise(xml);
 
@@ -145,9 +145,9 @@ const getDrones = async (oldDroneList: Drone[]) => {
 		// Get the owner information for each new drone
 		const newViolationsWithOwners = await Promise.all(
 			newViolations.map(async (drone) => {
+				// Fetch the owner data from the Reaktor API with CORS-anywhere proxy
 				const owner = await fetch(
 					`${process.env.HOST}/proxy/http://assignments.reaktor.com/birdnest/pilots/${drone.serialNumber}`
-					// `http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/pilots/${drone.serialNumber}`
 				);
 				const ownerJson = await owner.json();
 				return {
@@ -157,7 +157,7 @@ const getDrones = async (oldDroneList: Drone[]) => {
 			})
 		);
 
-		// Array of drones that were in the old list, but updated with new information. You could use flatMap here if you wanted to filter the older than 10 min ones at the same time.
+		// Array of drones that were in the old list updated with new information. You could use flatMap here if you wanted to filter the older than 10 min ones at the same time.
 		const updatedOldDroneList = oldDroneList.map((oldDrone) => {
 			const newDrone = newDrones.find(
 				(newDrone) => newDrone.serialNumber === oldDrone.serialNumber
@@ -168,7 +168,7 @@ const getDrones = async (oldDroneList: Drone[]) => {
 					timestamp: newDrone.timestamp, // Update timestamp
 					NDZtimestamp:
 						newDrone.NDZtimestamp || oldDrone.NDZtimestamp, // Update NDZtimestamp if drone is within 100m from the center
-					distance: Math.min(newDrone.distance, oldDrone.distance), // Keep the smallest distanc
+					distance: Math.min(newDrone.distance, oldDrone.distance), // Keep the closest distance
 				};
 			} else {
 				return oldDrone;
@@ -181,10 +181,6 @@ const getDrones = async (oldDroneList: Drone[]) => {
 			...newViolationsWithOwners,
 		].filter((drone) => !isOlderThan10Minutes(drone.timestamp));
 
-		console.log(
-			"🚀 ~ file: index.ts:141 ~ finalDroneList ~ finalDroneList",
-			finalDroneList
-		);
 		return finalDroneList;
 	} catch (error) {
 		console.log(error);
@@ -197,18 +193,22 @@ const interval = setInterval(async () => {
 	if (droneList) drones = droneList; // If we get a new drone list, update the old one
 }, 1000 * parseInt(process.env.REFRESH_RATE || "10")); // Set the refresh rate from the .env file or default to 10 seconds
 
+// Use Socket.IO to send the drone list to the client when they connect and every x seconds
 io.on("connection", (socket) => {
 	console.log(`Client ${String(socket.id)} connected`);
-	socket.emit("getData", drones); // Send the drone list to the client right away
+	socket.emit("getData", drones); // Send the drone list to the client on connection
 
+	// Send the drone list to the client every x seconds
 	const socketInterval = setInterval(() => {
 		socket.emit("getData", drones);
 	}, 1000 * parseInt(process.env.REFRESH_RATE || "10"));
 
+	// Send the drone list to the client when they request it (this is not used in the frontend right now)
 	socket.on("getData", () => {
 		socket.emit("getData", drones);
 	});
 
+	// Log when the client disconnects and clear the interval
 	socket.on("disconnect", async (reason) => {
 		console.log(`Client ${String(socket.id)} disconnected: ${reason}`);
 		clearInterval(socketInterval);
