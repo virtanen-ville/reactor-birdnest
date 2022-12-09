@@ -1,2 +1,2 @@
-# reactor-birdnest
-Reactor trainee assignment for summer 2023
+# reaktor-birdnest
+Reaktor trainee assignment for summer 2023
