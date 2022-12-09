@@ -13,9 +13,9 @@ import {
 	Drone,
 	Coordinates,
 } from "./types/types";
+const fetch = require("node-fetch");
 
 const parser = new xml2js.Parser();
-const fetch = require("node-fetch");
 dotenv.config();
 
 const app = express();
@@ -45,97 +45,105 @@ const isOlderThan10Minutes = (timestamp: string) => {
 	const droneTimestamp = new Date(timestamp);
 	return droneTimestamp < tenMinutesAgo;
 };
-const getData = async () => {
-	const res = await fetch(
-		"http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/drones",
-		{
-			method: "GET",
-		}
-	);
-	// res is XML. Parse it.
-	const xml = await res.text();
-	parser
-		.parseStringPromise(xml)
-		.then(function (result) {
-			// Add timestamp and distance to each drone
-			const newDrones: Drone[] = result.report.capture[0].drone.map(
-				(drone: any) => {
-					return {
-						serialNumber: drone.serialNumber[0],
-						model: drone.model[0],
-						manufacturer: drone.manufacturer[0],
-						positionX: parseFloat(drone.positionX[0]),
-						positionY: parseFloat(drone.positionY[0]),
-						altitude: parseFloat(drone.altitude[0]),
-						timestamp: new Date(
-							result.report.capture[0]["$"].snapshotTimestamp
-						),
-						NDZtimestamp:
-							distanceFromCenter({
-								x: parseFloat(drone.positionX[0]),
-								y: parseFloat(drone.positionY[0]),
-							}) <= 100
-								? new Date(
-										result.report.capture[0][
-											"$"
-										].snapshotTimestamp
-								  )
-								: null,
-						distance: distanceFromCenter({
+const getDrones = async (oldDroneList: Drone[]) => {
+	try {
+		const res = await fetch(
+			"http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/drones",
+			{
+				method: "GET",
+			}
+		);
+		// res is XML. Parse it.
+		const xml = await res.text();
+		const result = await parser.parseStringPromise(xml);
+
+		// Add required information to each drone
+		const newDrones: Drone[] = await result.report.capture[0].drone.map(
+			(drone: any) => {
+				return {
+					serialNumber: drone.serialNumber[0],
+					model: drone.model[0],
+					manufacturer: drone.manufacturer[0],
+					positionX: parseFloat(drone.positionX[0]),
+					positionY: parseFloat(drone.positionY[0]),
+					altitude: parseFloat(drone.altitude[0]),
+					timestamp: new Date(
+						result.report.capture[0]["$"].snapshotTimestamp
+					),
+					NDZtimestamp:
+						distanceFromCenter({
 							x: parseFloat(drone.positionX[0]),
 							y: parseFloat(drone.positionY[0]),
-						}),
-					};
-				}
+						}) <= 100
+							? new Date(
+									result.report.capture[0][
+										"$"
+									].snapshotTimestamp
+							  )
+							: null,
+					distance: distanceFromCenter({
+						x: parseFloat(drone.positionX[0]),
+						y: parseFloat(drone.positionY[0]),
+					}),
+				};
+			}
+		);
+
+		let newDroneList: Drone[] = [...oldDroneList];
+		console.log(
+			"🚀 ~ file: index.ts:94 ~ getDrones ~ newDroneList",
+			newDroneList
+		);
+
+		// newDrones.forEach(async (newDrone) =>
+		// Go over the new list of drones
+		for await (const newDrone of newDrones) {
+			// Check if drone is already in the list
+			const existingDrone = oldDroneList.find(
+				(oldDrone) => oldDrone.serialNumber === newDrone.serialNumber
 			);
-
-			// Go over the new list of drones
-			newDrones.forEach(async (newDrone) => {
-				// Check if drone is already in the list
-				const existingDrone = drones.find(
-					(oldDrone) =>
-						oldDrone.serialNumber === newDrone.serialNumber
+			// If drone is not on the list and it's within 100m from the center add it to the list
+			if (!existingDrone && newDrone.distance <= 100) {
+				const owner = await fetch(
+					`http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/pilots/${newDrone.serialNumber}`
 				);
-				// If drone is not in the list and it's within 100m from the center
-				if (!existingDrone && newDrone.distance <= 100) {
-					// TODO Check the owner of the drone
-					const owner = await fetch(
-						`http://127.0.0.1:3000/proxy/http://assignments.reaktor.com/birdnest/pilots/${newDrone.serialNumber}`
-					);
-					const ownerJson = await owner.json();
-					newDrone.owner = ownerJson;
-					// Add the drone to the list
-					drones.push(newDrone);
-				}
-				// If drone is in the list update the timestamp and distance
-				else if (existingDrone) {
-					const updatedDrone = {
-						...existingDrone,
-						timestamp: newDrone.timestamp, // Update timestamp
-						NDZtimestamp:
-							newDrone.NDZtimestamp || existingDrone.NDZtimestamp, // Update NDZtimestamp if drone is within 100m from the center
-						distance: Math.min(
-							newDrone.distance,
-							existingDrone.distance
-						), // Keep the smallest distance
-					};
-					// Replace the drone in the list with the updated drone
-					drones = drones.map((oldDrone) =>
-						oldDrone.serialNumber === updatedDrone.serialNumber
-							? updatedDrone
-							: oldDrone
-					);
-				}
-			});
+				const ownerJson = await owner.json();
+				const newDroneWithOwner = { ...newDrone, owner: ownerJson };
+				newDroneList.push(newDroneWithOwner);
+			}
+			// If drone is in the list update the timestamp and distance
+			else if (existingDrone) {
+				const updatedDrone = {
+					...existingDrone,
+					timestamp: newDrone.timestamp, // Update timestamp
+					NDZtimestamp:
+						newDrone.NDZtimestamp || existingDrone.NDZtimestamp, // Update NDZtimestamp if drone is within 100m from the center
+					distance: Math.min(
+						newDrone.distance,
+						existingDrone.distance
+					), // Keep the smallest distance
+				};
 
-			// Finally filter drones that are older than 10 minutes
-			drones = drones.filter((drone) => {
-				return !isOlderThan10Minutes(drone.timestamp);
-			});
-		})
-		.catch(function (err) {
-			console.log(err);
+				// Replace the drone in the list with the updated drone
+				const indexOfDrone = newDroneList.findIndex(
+					(drone) => drone.serialNumber === updatedDrone.serialNumber
+				);
+				newDroneList.splice(indexOfDrone, 1, updatedDrone);
+			}
+		}
+
+		// Finally filter drones that are older than 10 minutes
+		const finalDroneList = newDroneList.filter((drone) => {
+			return !isOlderThan10Minutes(drone.timestamp);
 		});
+		console.log(
+			"🚀 ~ file: index.ts:134 ~ finalDroneList ~ finalDroneList",
+			finalDroneList
+		);
+		return finalDroneList;
+	} catch (error) {
+		console.log(error);
+	}
 };
 
 /* Attach our cors proxy to the existing API on the /proxy endpoint. */
@@ -166,12 +174,21 @@ const io = new Server<
 	},
 });
 
+// This interval will update the drone list every x seconds and it will keep the list updated so that wwe can send it to the client anytime
+const interval = setInterval(async () => {
+	const droneList = await getDrones(drones);
+	if (droneList) drones = droneList;
+	// TODO change to 2 seconds
+}, 1000 * 10);
+
 io.on("connection", (socket) => {
 	console.log(`Client ${String(socket.id)} connected`);
-	const interval = setInterval(() => {
-		getData();
+	socket.emit("getData", drones);
+
+	const socketInterval = setInterval(() => {
 		socket.emit("getData", drones);
-	}, 1000 * 10); // 10 seconds TODO change to 2 seconds?
+		// TODO change to 2 seconds
+	}, 1000 * 10);
 
 	socket.on("getData", () => {
 		console.log("getting data");
@@ -180,6 +197,7 @@ io.on("connection", (socket) => {
 
 	socket.on("disconnect", async (reason) => {
 		console.log(`Client ${String(socket.id)} disconnected: ${reason}`);
+		clearInterval(socketInterval);
 	});
 });
 
