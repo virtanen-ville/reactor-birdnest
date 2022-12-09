@@ -8,7 +8,7 @@ import TableHead from "@mui/material/TableHead";
 import TableRow from "@mui/material/TableRow";
 import Paper from "@mui/material/Paper";
 import { io } from "socket.io-client";
-import { Container, Typography } from "@mui/material";
+import { CircularProgress, Container, Typography } from "@mui/material";
 export interface Drone {
 	serialNumber: string;
 	timestamp: string;
@@ -74,64 +74,65 @@ function App() {
 
 			<Paper sx={{ width: "100%", overflow: "hidden" }}>
 				{loading ? (
-				<h2>Loading...</h2>
-			) : (
-				<TableContainer sx={{ maxHeight: "80vh" }}>
+					<CircularProgress />
+				) : (
+					<TableContainer sx={{ maxHeight: "80vh" }}>
 						<Table
-						stickyHeader
-						sx={{ minWidth: 650 }}
-						aria-label="drone-info-table"
-					>
+							stickyHeader
+							sx={{ minWidth: 650 }}
+							aria-label="drone-info-table"
+						>
 							<TableHead>
 								<TableRow>
 									<TableCell>Latest observation</TableCell>
 									<TableCell align="right">
-									
-									Latest in NDZ
-								
-								</TableCell>
+										Latest in NDZ
+									</TableCell>
+									<TableCell align="right">
+										Closest Distance
+									</TableCell>
+									<TableCell align="right">Name</TableCell>
+									<TableCell align="right">Phone</TableCell>
+									<TableCell align="right">Email</TableCell>
+								</TableRow>
+							</TableHead>
+							<TableBody>
+								{drones &&
+									drones.map((drone, idx) => (
+										<TableRow key={idx}>
+											<TableCell
+												component="th"
+												scope="row"
+											>
+												{new Date(
+													drone.timestamp
+												).toLocaleString()}
+											</TableCell>
+											<TableCell align="right">
+												{new Date(
+													drone.NDZtimestamp || ""
+												).toLocaleString()}
+											</TableCell>
 
-								<TableCell align="right">
-									Closest Distance
-								</TableCell>
-
-								<TableCell align="right">Name</TableCell>
-								<TableCell align="right">Phone</TableCell>
-								<TableCell align="right">Email</TableCell>
-							</TableRow>
-						</TableHead>
-						<TableBody>
-							{drones &&
-								drones.map((drone, idx) => (
-									<TableRow key={idx}>
-										<TableCell component="th" scope="row">
-											{new Date(
-												drone.timestamp
-											).toLocaleString()}
-										</TableCell>
-										<TableCell align="right">
-											{new Date(
-												drone.NDZtimestamp || ""
-											).toLocaleString()}
-										</TableCell>
-
-										<TableCell align="right">
-											{drone.distance.toFixed(2)} meters
-										</TableCell>
-										<TableCell align="right">
-											{`${drone.owner.firstName} ${drone.owner.lastName}`}
-										</TableCell>
-										<TableCell align="right">
-											{drone.owner.phoneNumber}
-										</TableCell>
-										<TableCell align="right">
-											{drone.owner.email}
-										</TableCell>
-									</TableRow>
-								))}
-						</TableBody>
-					</Table>
-				</TableContainer>
+											<TableCell align="right">
+												{drone.distance.toFixed(2)}{" "}
+												meters
+											</TableCell>
+											<TableCell align="right">
+												{`${drone.owner.firstName} ${drone.owner.lastName}`}
+											</TableCell>
+											<TableCell align="right">
+												{drone.owner.phoneNumber}
+											</TableCell>
+											<TableCell align="right">
+												{drone.owner.email}
+											</TableCell>
+										</TableRow>
+									))}
+							</TableBody>
+						</Table>
+					</TableContainer>
+				)}
 			</Paper>
 		</Container>
 	);
