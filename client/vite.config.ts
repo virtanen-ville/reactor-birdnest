@@ -6,12 +6,15 @@ export default defineConfig({
 	plugins: [react()],
 	server: {
 		proxy: {
-			"/api": {
-				target: "http://127.0.0.1:3000",
+			"/test": {
+				target: "http://127.0.0.1:3000/test",
 				changeOrigin: true,
-				rewrite: (path) => path.replace(/^\/api/, ""),
+				//rewrite: (path) => path.replace(/^\/api/, ""),
 			},
-
+			"/drones": {
+				target: "http://127.0.0.1:3000/drones",
+				changeOrigin: true,
+			},
 			"/socket.io": {
 				target: "http://127.0.0.1:3000",
 				ws: true,
